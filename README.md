@@ -76,7 +76,7 @@ dga-lstm-web-demo/
 
 ## 4. 빠른 실행 예시
 **(1) (선택) 가상환경**  
-python -3.10 -m venv .venv  
+py -3.10 -m venv .venv  
 .\.venv\Scripts\Activate.ps1  
 python -m pip install --upgrade pip  
 

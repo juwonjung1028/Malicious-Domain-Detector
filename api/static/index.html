@@ -1,0 +1,171 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DGA/LSTM Domain Detector</title>
+
+    <style>
+      body {
+        font-family: system-ui, Arial, sans-serif;
+        margin: 32px;
+      }
+      .card {
+        border: 1px solid #ddd;
+        border-radius: 14px;
+        padding: 20px;
+        max-width: 800px;
+      }
+      input {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+      }
+      button {
+        padding: 10px 16px;
+        border: 1px solid #888;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .pill {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid #ccc;
+      }
+      .muted {
+        color: #666;
+        font-size: 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 18px;
+      }
+      th,
+      td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #eee;
+        text-align: left;
+      }
+      .benign {
+        color: #0a7f00;
+      }
+      .malicious {
+        color: #b00020;
+      }
+
+      .status-text {
+        color: #666;
+        font-size: 12px;
+        margin-left: 8px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        border-radius: 0;
+        display: inline;
+      }
+      .status-text.predicting {
+        font-style: italic;
+      }
+      .status-text.done {
+        font-weight: 600;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="card">
+      <h2>Realtime Malicious Domain Detector (DGA/LSTM)</h2>
+
+      <p class="muted">
+        Enter a domain (without TLD), e.g., <code>google</code>,
+        <code>ajdksla</code>.
+      </p>
+
+      <div class="row">
+        <input id="domain" placeholder="exampledomain" />
+        <button onclick="predict()">Check</button>
+        <span
+          id="status"
+          class="status-text"
+          role="status"
+          aria-live="polite"
+          >Ready</span
+        >
+      </div>
+
+      <div id="result" style="margin-top: 16px;"></div>
+
+      <h3>Recent predictions</h3>
+      <table id="logtable">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Domain</th>
+            <th>Probability</th>
+            <th>Label</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <script>
+      async function predict() {
+        const d = document.getElementById("domain").value.trim();
+        if (!d) return;
+
+        document.getElementById("status").innerText = "Predicting...";
+
+        const r = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domain: d }),
+        });
+        const x = await r.json();
+
+        document.getElementById("status").innerText = "Done";
+
+        const p = (x.probability * 100).toFixed(2) + "%";
+        const cls = x.label === "malicious" ? "malicious" : "benign";
+        document.getElementById(
+          "result"
+        ).innerHTML = `<div>Result: <strong class="${cls}">${x.label.toUpperCase()}</strong> (p=${p})</div>`;
+
+        await refreshLogs();
+      }
+
+      async function refreshLogs() {
+        const r = await fetch("/logs?limit=20");
+        const arr = await r.json();
+        const tb = document.querySelector("#logtable tbody");
+        tb.innerHTML = "";
+
+        for (const it of arr.reverse()) {
+          const tr = document.createElement("tr");
+          const ts = new Date(it.ts * 1000).toLocaleString();
+          tr.innerHTML = `<td>${ts}</td><td>${it.domain}</td><td>${(it.probability * 100).toFixed(
+            2
+          )}%</td><td>${it.label}</td>`;
+          tb.appendChild(tr);
+        }
+
+        const el = document.getElementById("status");
+        el.className = "status-text predicting";
+        el.innerText = "Predicting...";
+        // 예측 끝나면
+        el.className = "status-text done";
+        el.innerText = "Done";
+      }
+
+      refreshLogs();
+    </script>
+  </body>
+</html>

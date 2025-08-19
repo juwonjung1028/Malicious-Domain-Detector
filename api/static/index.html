@@ -14,10 +14,13 @@
         border: 1px solid #ddd;
         border-radius: 14px;
         padding: 20px;
-        max-width: 800px;
+        max-width: 900px;
+        box-sizing: border-box;
       }
       input {
-        width: 100%;
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 260px;
         padding: 12px;
         border: 1px solid #ccc;
         border-radius: 10px;
@@ -27,38 +30,60 @@
         border: 1px solid #888;
         border-radius: 10px;
         cursor: pointer;
+        white-space: nowrap;
       }
       .row {
         display: flex;
         gap: 12px;
         align-items: center;
+        flex-wrap: nowrap;
       }
-      .pill {
-        display: inline-block;
-        padding: 4px 10px;
-        border-radius: 999px;
-        border: 1px solid #ccc;
+      .muted { color: #666; font-size: 12px; }
+
+      .table-header {
+        margin-top: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
       }
-      .muted {
-        color: #666;
-        font-size: 12px;
+      .table-header h3 { margin: 0; }
+
+      .table-scroll {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
       }
       table {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 18px;
+        margin-top: 12px;
+        table-layout: auto;
       }
-      th,
-      td {
+      th, td {
         padding: 8px 10px;
         border-bottom: 1px solid #eee;
         text-align: left;
+        vertical-align: top;
       }
-      .benign {
-        color: #0a7f00;
+
+      th.time-col,
+      td.time-col {
+        white-space: nowrap;
+        width: 180px;
       }
-      .malicious {
-        color: #b00020;
+
+      /* Domain 열: 아주 긴 문자열도 셀 내부에서 줄바꿈 */
+      td.domain-cell {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .benign { color: #0a7f00; }
+      .malicious { color: #b00020; }
+
+      tr.recent-row {
+        background: #EEF4FF;
       }
 
       .status-text {
@@ -70,12 +95,28 @@
         background: transparent;
         border-radius: 0;
         display: inline;
+        white-space: nowrap;
       }
-      .status-text.predicting {
-        font-style: italic;
+      .status-text.predicting { font-style: italic; }
+      .status-text.done { font-weight: 600; }
+
+      button.link {
+        background: transparent;
+        border: none;
+        text-decoration: underline;
+        cursor: pointer;
+        padding: 6px 8px;
       }
-      .status-text.done {
-        font-weight: 600;
+      button.link.danger { color: #b00020; }
+      button.link.muted  { color: #666; }
+      button.link[disabled] { opacity: .5; cursor: default; text-decoration: none; }
+
+      /* === 작은 화면 대응 === */
+      @media (max-width: 560px) {
+        .row { flex-wrap: wrap; }             /* 입력줄만 줄바꿈 허용 */
+        input { flex: 1 1 100%; min-width: 0; }
+        /* 테이블은 최소 가로폭을 유지하고, 컨테이너 내부에서 가로 스크롤 */
+        .table-scroll table { min-width: 560px; }
       }
     </style>
   </head>
@@ -85,60 +126,72 @@
       <h2>Realtime Malicious Domain Detector (DGA/LSTM)</h2>
 
       <p class="muted">
-        Enter a domain (without TLD), e.g., <code>google</code>,
-        <code>ajdksla</code>.
+        Enter a domain (without TLD), e.g., <code>google</code>.
       </p>
 
       <div class="row">
         <input id="domain" placeholder="exampledomain" />
         <button onclick="predict()">Check</button>
-        <span
-          id="status"
-          class="status-text"
-          role="status"
-          aria-live="polite"
-          >Ready</span
-        >
+        <span id="status" class="status-text" role="status" aria-live="polite">Ready</span>
       </div>
 
-      <div id="result" style="margin-top: 16px;"></div>
+      <div class="table-header">
+        <h3>Recent predictions</h3>
+        <button class="link danger" onclick="clearLogs()">Clear all</button>
+      </div>
 
-      <h3>Recent predictions</h3>
-      <table id="logtable">
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Domain</th>
-            <th>Probability</th>
-            <th>Label</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <!-- 스크롤 컨테이너로 감싸기 -->
+      <div class="table-scroll">
+        <table id="logtable">
+          <thead>
+            <tr>
+              <th class="time-col">Time</th>
+              <th>Domain</th>
+              <th>Probability</th>
+              <th>Label</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
 
     <script>
       async function predict() {
-        const d = document.getElementById("domain").value.trim();
+        const input = document.getElementById("domain");
+        const d = input.value.trim();
         if (!d) return;
 
-        document.getElementById("status").innerText = "Predicting...";
+        const statusEl = document.getElementById("status");
+        statusEl.className = "status-text predicting";
+        statusEl.innerText = "Predicting...";
 
         const r = await fetch("/predict", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ domain: d }),
         });
-        const x = await r.json();
+        await r.json();
 
-        document.getElementById("status").innerText = "Done";
+        statusEl.className = "status-text done";
+        statusEl.innerText = "Done";
 
-        const p = (x.probability * 100).toFixed(2) + "%";
-        const cls = x.label === "malicious" ? "malicious" : "benign";
-        document.getElementById(
-          "result"
-        ).innerHTML = `<div>Result: <strong class="${cls}">${x.label.toUpperCase()}</strong> (p=${p})</div>`;
+        input.value = "";  // 입력칸 비우기
+        input.focus();     // 포커스 유지
 
+        await refreshLogs();
+      }
+
+      async function clearLogs() {
+        if (!confirm("Delete ALL recent predictions permanently?")) return;
+        await fetch("/logs?all=true", { method: "DELETE" });
+        await refreshLogs();
+      }
+
+      async function deleteLog(id) {
+        if (!id) return;
+        await fetch("/logs?id=" + encodeURIComponent(id), { method: "DELETE" });
         await refreshLogs();
       }
 
@@ -148,19 +201,32 @@
         const tb = document.querySelector("#logtable tbody");
         tb.innerHTML = "";
 
-        for (const it of arr.reverse()) {
+        // 최신 항목이 위로 오도록 역순 목록 생성
+        const rows = arr.slice().reverse();
+
+        rows.forEach((it, idx) => {
           const tr = document.createElement("tr");
-          const ts = new Date(it.ts * 1000).toLocaleString();
-          tr.innerHTML = `<td>${ts}</td><td>${it.domain}</td><td>${(it.probability * 100).toFixed(
-            2
-          )}%</td><td>${it.label}</td>`;
+          if (idx === 0) tr.classList.add("recent-row");
+
+          const ts = it.ts ? new Date(it.ts * 1000).toLocaleString() : "";
+          const labelCls = it.label === "malicious" ? "malicious" : "benign";
+          const labelText = (it.label ?? "").toUpperCase();
+
+          const actionCell = it.id
+            ? `<button class="link danger" onclick="deleteLog('${it.id}')">Delete</button>`
+            : `<button class="link muted" disabled title="Legacy item (no id)">Delete</button>`;
+
+          tr.innerHTML = `
+            <td class="time-col">${ts}</td>
+            <td class="domain-cell">${it.domain ?? ""}</td>
+            <td>${it.probability != null ? (it.probability * 100).toFixed(2) + "%" : ""}</td>
+            <td><span class="${labelCls}">${labelText}</span></td>
+            <td>${actionCell}</td>
+          `;
           tb.appendChild(tr);
-        }
+        });
 
         const el = document.getElementById("status");
-        el.className = "status-text predicting";
-        el.innerText = "Predicting...";
-        // 예측 끝나면
         el.className = "status-text done";
         el.innerText = "Done";
       }
